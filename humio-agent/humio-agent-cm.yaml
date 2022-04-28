@@ -1,0 +1,115 @@
+apiVersion: v1
+data:
+  custom.conf: ""
+  fluent-bit-filter.conf: |-
+    [FILTER]
+        Name                kubernetes
+        Match               kube.*
+        Kube_Tag_Prefix     kube.var.log.containers.
+        Kube_URL            https://kubernetes.default.svc:443
+        Kube_CA_File        /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        Kube_Token_File     /var/run/secrets/kubernetes.io/serviceaccount/token
+        Merge_Log           On
+        Merge_Log_Key       log_processed
+        K8S-Logging.Parser  On
+        K8S-Logging.Exclude On
+  fluent-bit-input.conf: |-
+    [INPUT]
+        Name             tail
+        Path             /var/log/containers/qotd*.log
+        Exclude_Path      /var/log/containers/qotd-load*.log,/var/log/containers/qotd-usecase*.log
+        Parser           docker
+        Tag              kube.*
+        Refresh_Interval 5
+        Mem_Buf_Limit    5MB
+        Skip_Long_Lines  On
+  fluent-bit-output.conf: |-
+    [OUTPUT]
+        Name  es
+        Match *
+        Host ${FLUENT_ELASTICSEARCH_HOST}
+        Port ${FLUENT_ELASTICSEARCH_PORT}
+        tls ${FLUENT_ELASTICSEARCH_TLS}
+        tls.verify ${FLUENT_ELASTICSEARCH_TLS_VERIFY}
+        HTTP_User ${HUMIO_REPO_NAME}
+        HTTP_Passwd ${HUMIO_INGEST_TOKEN}
+        Logstash_Format On
+        Retry_Limit False
+        Type  flb_type
+        Time_Key @timestamp
+        Replace_Dots On
+        Logstash_Prefix FluentBitHelmChart
+        Buffer_Size 5MB
+  fluent-bit-service.conf: |-
+    [SERVICE]
+        Flush        1
+        Daemon       Off
+        Log_Level    info
+        Parsers_File parsers.conf
+  fluent-bit.conf: |-
+    @INCLUDE fluent-bit-service.conf
+    @INCLUDE fluent-bit-input.conf
+    @INCLUDE fluent-bit-filter.conf
+    @INCLUDE fluent-bit-output.conf
+
+    @INCLUDE custom.conf
+  parsers.conf: |-
+    [PARSER]
+        Name   apache
+        Format regex
+        Regex  ^(?<host>[^ ]*) [^ ]* (?<user>[^ ]*) \[(?<time>[^\]]*)\] "(?<method>\S+)(?: +(?<path>[^\"]*?)(?: +\S*)?)?" (?<code>[^ ]*) (?<size>[^ ]*)(?: "(?<referer>[^\"]*)" "(?<agent>[^\"]*)")?$
+        Time_Key time
+        Time_Format %d/%b/%Y:%H:%M:%S %z
+
+    [PARSER]
+        Name   apache2
+        Format regex
+        Regex  ^(?<host>[^ ]*) [^ ]* (?<user>[^ ]*) \[(?<time>[^\]]*)\] "(?<method>\S+)(?: +(?<path>[^ ]*) +\S*)?" (?<code>[^ ]*) (?<size>[^ ]*)(?: "(?<referer>[^\"]*)" "(?<agent>[^\"]*)")?$
+        Time_Key time
+        Time_Format %d/%b/%Y:%H:%M:%S %z
+
+    [PARSER]
+        Name   apache_error
+        Format regex
+        Regex  ^\[[^ ]* (?<time>[^\]]*)\] \[(?<level>[^\]]*)\](?: \[pid (?<pid>[^\]]*)\])?( \[client (?<client>[^\]]*)\])? (?<message>.*)$
+
+    [PARSER]
+        Name   nginx
+        Format regex
+        Regex ^(?<remote>[^ ]*) (?<host>[^ ]*) (?<user>[^ ]*) \[(?<time>[^\]]*)\] "(?<method>\S+)(?: +(?<path>[^\"]*?)(?: +\S*)?)?" (?<code>[^ ]*) (?<size>[^ ]*)(?: "(?<referer>[^\"]*)" "(?<agent>[^\"]*)")
+        Time_Key time
+        Time_Format %d/%b/%Y:%H:%M:%S %z
+
+    [PARSER]
+        Name   json
+        Format json
+        Time_Key time
+        Time_Format %d/%b/%Y:%H:%M:%S %z
+
+    [PARSER]
+        Name        docker
+        Format      json
+        Time_Key    time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L
+        Time_Keep   On
+
+    [PARSER]
+        Name        syslog
+        Format      regex
+        Regex       ^\<(?<pri>[0-9]+)\>(?<time>[^ ]* {1,2}[^ ]* [^ ]*) (?<host>[^ ]*) (?<ident>[a-zA-Z0-9_\/\.\-]*)(?:\[(?<pid>[0-9]+)\])?(?:[^\:]*\:)? *(?<message>.*)$
+        Time_Key    time
+        Time_Format %b %d %H:%M:%S
+kind: ConfigMap
+metadata:
+  annotations:
+    meta.helm.sh/release-name: humio
+    meta.helm.sh/release-namespace: logging
+  creationTimestamp: 2022-04-28T17:47:42Z
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    k8s-app: humio
+  name: humio-fluent-bit-config
+  namespace: logging
+  resourceVersion: "244522"
+  selfLink: /api/v1/namespaces/logging/configmaps/humio-fluent-bit-config
+  uid: 4dcac602-c71b-11ec-abee-06a0ccb30ff7
