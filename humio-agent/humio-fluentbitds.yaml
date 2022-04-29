@@ -1,0 +1,120 @@
+apiVersion: extensions/v1beta1
+kind: DaemonSet
+metadata:
+  annotations:
+    meta.helm.sh/release-name: humio
+    meta.helm.sh/release-namespace: logging
+  generation: 1
+  labels:
+    app.kubernetes.io/managed-by: Helm
+    k8s-app: humio
+    kubernetes.io/cluster-service: "true"
+    version: v1
+  name: humio-fluentbit
+  namespace: logging
+  selfLink: /apis/extensions/v1beta1/namespaces/logging/daemonsets/humio-fluentbit
+  uid: 6d788e3b-c753-11ec-84b1-06484506c403
+spec:
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      k8s-app: humio
+  template:
+    metadata:
+      annotations:
+        prometheus.io/path: /api/v1/metrics/prometheus
+        prometheus.io/port: "2020"
+        prometheus.io/scrape: "true"
+      creationTimestamp: null
+      labels:
+        k8s-app: humio
+        kubernetes.io/cluster-service: "true"
+        version: v1
+    spec:
+      containers:
+      - command:
+        - /fluent-bit/bin/fluent-bit
+        - -c
+        - /fluent-bit/etc/fluent-bit.conf
+        - -H
+        env:
+        - name: FLUENT_ELASTICSEARCH_HOST
+          value: humio-cmc.coc-ibm.com
+        - name: FLUENT_ELASTICSEARCH_PORT
+          value: "443"
+        - name: FLUENT_ELASTICSEARCH_TLS
+          value: "On"
+        - name: FLUENT_ELASTICSEARCH_TLS_VERIFY
+          value: "Off"
+        - name: HUMIO_REPO_NAME
+          value: defaultRepoName
+        - name: HUMIO_INGEST_TOKEN
+          valueFrom:
+            secretKeyRef:
+              key: token
+              name: fluentbit-custom-token
+        - name: FLUENT_HEC_HOST
+          value: cloud.humio.com
+        - name: FLUENT_HEC_PORT
+          value: "443"
+        - name: FLUENT_HEC_TLS
+          value: "Off"
+        - name: FLUENT_HEC_TLS_VERIFY
+          value: "Off"
+        image: fluent/fluent-bit:1.6.10
+        imagePullPolicy: Always
+        livenessProbe:
+          failureThreshold: 3
+          httpGet:
+            path: /api/v1/metrics
+            port: 2020
+            scheme: HTTP
+          periodSeconds: 10
+          successThreshold: 1
+          timeoutSeconds: 1
+        name: humio
+        ports:
+        - containerPort: 2020
+          protocol: TCP
+        resources:
+          limits:
+            cpu: 100m
+            memory: 128Mi
+          requests:
+            cpu: 100m
+            memory: 128Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        - mountPath: /var/log
+          name: varlog
+        - mountPath: /var/lib/docker/containers
+          name: varlibdockercontainers
+          readOnly: true
+        - mountPath: /fluent-bit/etc/
+          name: config
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      serviceAccount: humio-fluentbit-read
+      serviceAccountName: humio-fluentbit-read
+      terminationGracePeriodSeconds: 10
+      volumes:
+      - hostPath:
+          path: /var/log
+          type: ""
+        name: varlog
+      - hostPath:
+          path: /var/lib/docker/containers
+          type: ""
+        name: varlibdockercontainers
+      - configMap:
+          defaultMode: 420
+          name: humio-fluent-bit-config
+        name: config
+  templateGeneration: 1
+  updateStrategy:
+    rollingUpdate:
+      maxUnavailable: 1
+    type: RollingUpdate
